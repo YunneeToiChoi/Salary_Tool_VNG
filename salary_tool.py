@@ -1,39 +1,45 @@
 import os
 import pandas as pd
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill
 import re
+import openpyxl
 
-# def load_data(file_path, sheet_name):
-#     # Đọc file excel và lấy dữ liệu của sheet
-#     df = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
-    
-#     # Lấy thông tin tháng và năm từ các cột F, G, H, I tại dòng 1
-#     month_info = df.iloc[0, 5:9].values  # Cột F, G, H, I
-#     month_year = ' '.join([str(i) for i in month_info if pd.notna(i)]).strip()
-#     print(f"Tháng và năm: {month_year}")
-    
-#     # Tìm bảng lương kỳ 1 và kỳ 2 dựa trên dòng 8 và các cột
-#     salary_table_1_title = df.iloc[7, 19]  # Cột T (19)
-#     salary_table_2_title = df.iloc[7, 56]  # Cột BD (56)
-    
-#     salary_tables = []
-#     if pd.notna(salary_table_1_title) and 'BẢNG LƯƠNG KỲ 1' in str(salary_table_1_title):
-#         salary_tables.append('BẢNG LƯƠNG KỲ 1')
-#     if pd.notna(salary_table_2_title) and 'BẢNG LƯƠNG KỲ 2' in str(salary_table_2_title):
-#         salary_tables.append('BẢNG LƯƠNG KỲ 2')
-    
-#     if not salary_tables:
-#         print("Không tìm thấy bảng lương nào theo cú pháp 'BẢNG LƯƠNG'.")
-#     else:
-#         print(f"Các bảng lương tìm thấy: {salary_tables}")
-    
-#     # Đặt tên cột từ dòng 9
-#     df.columns = df.iloc[8]
-#     # Loại bỏ các dòng đầu tiên trước dữ liệu thực
-#     df = df.drop(index=range(9))
+def save_employee_data(employee_data, employee_name, month_year, salary_table, output_folder):
+    # Tạo tên file xuất
+    sanitized_employee_name = re.sub(r'[\\/:"*?<>|]+', "_", employee_name)
+    file_name = f'{sanitized_employee_name}_{month_year}_{salary_table}.xlsx'
+    output_path = os.path.join(output_folder, file_name)
 
-#     return df, month_year, salary_tables
+    # Tạo workbook mới và viết dữ liệu vào file
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Thông Tin Nhân Viên"
+    
+    # Ghi tiêu đề cột
+    ws.append(list(employee_data.columns))
+    
+    # Ghi dữ liệu nhân viên
+    for row in employee_data.itertuples(index=False, name=None):
+        ws.append(row)
+    
+    # Điều chỉnh chiều rộng cột
+    min_width = 15
+    for column in ws.columns:
+        max_length = 0
+        column_letter = column[0].column_letter
+        for cell in column:
+            try:
+                if cell.value is not None:
+                    max_length = max(max_length, len(str(cell.value)))
+            except:
+                pass
+        adjusted_width = max(max_length + 2, min_width)
+        ws.column_dimensions[column_letter].width = adjusted_width
+    
+    # Lưu file Excel
+    wb.save(output_path)
+    print(f"Thông tin nhân viên {employee_name} đã được lưu tại: {output_path}")
+
 def load_data(file_path, sheet_name):
     # Đọc file excel và lấy dữ liệu của sheet
     df = pd.read_excel(file_path, sheet_name=sheet_name, header=None)
@@ -103,7 +109,6 @@ def search_employee(data, keyword, salary_table, table_start_col, table_end_col)
     
     return result
 
-def save_employee_data(employee_data, employee_name, month_year, salary_table, output_folder):
     # Tạo tên file xuất
     sanitized_employee_name = re.sub(r'[\\/:"*?<>|]+', "_", employee_name)
     file_name = f'{sanitized_employee_name}_{month_year}_{salary_table}.xlsx'
@@ -127,10 +132,33 @@ def save_employee_data(employee_data, employee_name, month_year, salary_table, o
         cell.fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
         cell.alignment = Alignment(horizontal="center")
     
-    # Định dạng các dòng dữ liệu
-    for row in ws.iter_rows(min_row=2, min_col=1, max_col=len(employee_data.columns), max_row=len(employee_data)+1):
-        for cell in row:
-            cell.alignment = Alignment(horizontal="left", vertical="center")
+    # Sao chép màu sắc và định dạng từ sheet gốc cho từng ô
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_row=len(employee_data)+1), start=2):
+        for col_idx, cell in enumerate(row, start=1):
+            original_cell = original_sheet.cell(row=row_idx, column=col_idx)
+            
+            # Sao chép font, fill và alignment từ ô gốc
+            cell.font = Font(
+                name=original_cell.font.name,
+                size=original_cell.font.size,
+                bold=original_cell.font.bold,
+                italic=original_cell.font.italic,
+                vertAlign=original_cell.font.vertAlign,
+                underline=original_cell.font.underline,
+                strike=original_cell.font.strike,
+                color=original_cell.font.color
+            )
+            cell.fill = PatternFill(
+                fill_type=original_cell.fill.fill_type,
+                start_color=original_cell.fill.start_color.rgb if original_cell.fill.start_color else None,
+                end_color=original_cell.fill.end_color.rgb if original_cell.fill.end_color else None
+            )
+            cell.alignment = Alignment(
+                horizontal=original_cell.alignment.horizontal,
+                vertical=original_cell.alignment.vertical
+            )
+            
+            # Định dạng các ô là số
             if isinstance(cell.value, (int, float)):
                 cell.number_format = '#,##0'
     
@@ -151,7 +179,6 @@ def save_employee_data(employee_data, employee_name, month_year, salary_table, o
     # Lưu file Excel
     wb.save(output_path)
     print(f"Thông tin nhân viên {employee_name} đã được lưu tại: {output_path}")
-
 def main():
     excel_file = r'D:\Salary_Data\2024-_09_BangLuong_v01.xlsx'
     base_folder = r'D:\Salary_Data'
@@ -202,6 +229,7 @@ def main():
                 if not os.path.exists(output_folder):
                     os.makedirs(output_folder)
 
+                # Lưu dữ liệu nhân viên (không copy màu sắc hay định dạng)
                 save_employee_data(employee_data, employee_name, month_year, table, output_folder)
     except Exception as e:
         print(f"Lỗi: {e}")
